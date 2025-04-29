@@ -1,6 +1,6 @@
-FROM node:20 AS build-deps
+FROM node:14 as build-deps
 
-RUN apt-get update && apt-get install -y wget -y wget postgresql-client
+RUN apt-get update && apt-get install -y wget
 
 ENV DOCKERIZE_VERSION v0.6.1
 RUN wget https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
@@ -32,11 +32,9 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV CHROME_BIN=google-chrome-stable
 
-COPY add-env-vars.sh ./
-RUN chmod +x add-env-vars.sh
-
 EXPOSE 3000
 
-CMD dockerize -wait tcp://${DB_HOST}:${DB_PORT} \
-    && sh ./add-env-vars.sh \
-    && node dist/server.js
+ENTRYPOINT ["dumb-init", "--"]
+CMD dockerize -wait tcp://${DB_HOST}:3306 \
+  && npx sequelize db:migrate \
+  && node dist/server.js

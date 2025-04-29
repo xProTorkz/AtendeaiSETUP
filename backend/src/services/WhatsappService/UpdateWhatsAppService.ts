@@ -12,27 +12,13 @@ interface WhatsappData {
   session?: string;
   isDefault?: boolean;
   greetingMessage?: string;
-  complationMessage?: string;
-  outOfHoursMessage?: string;
-  ratingMessage?: string;
+  farewellMessage?: string;
   queueIds?: number[];
-  token?: string;
-  //sendIdQueue?: number;
-  //timeSendQueue?: number;
-  transferQueueId?: number; 
-  timeToTransfer?: number;    
-  promptId?: number;
-  maxUseBotQueues?: number;
-  timeUseBotQueues?: number;
-  expiresTicket?: number;
-  expiresInactiveMessage?: string;
-
 }
 
 interface Request {
   whatsappData: WhatsappData;
   whatsappId: string;
-  companyId: number;
 }
 
 interface Response {
@@ -42,8 +28,7 @@ interface Response {
 
 const UpdateWhatsAppService = async ({
   whatsappData,
-  whatsappId,
-  companyId
+  whatsappId
 }: Request): Promise<Response> => {
   const schema = Yup.object().shape({
     name: Yup.string().min(2),
@@ -57,25 +42,13 @@ const UpdateWhatsAppService = async ({
     isDefault,
     session,
     greetingMessage,
-    complationMessage,
-    outOfHoursMessage,
-    ratingMessage,
-    queueIds = [],
-    token,
-    //timeSendQueue,
-    //sendIdQueue = null,
-    transferQueueId,	
-	timeToTransfer,	
-    promptId,
-    maxUseBotQueues,
-    timeUseBotQueues,
-    expiresTicket,
-    expiresInactiveMessage
+    farewellMessage,
+    queueIds = []
   } = whatsappData;
 
   try {
     await schema.validate({ name, status, isDefault });
-  } catch (err: any) {
+  } catch (err) {
     throw new AppError(err.message);
   }
 
@@ -87,39 +60,22 @@ const UpdateWhatsAppService = async ({
 
   if (isDefault) {
     oldDefaultWhatsapp = await Whatsapp.findOne({
-      where: {
-        isDefault: true,
-        id: { [Op.not]: whatsappId },
-        companyId
-      }
+      where: { isDefault: true, id: { [Op.not]: whatsappId } }
     });
     if (oldDefaultWhatsapp) {
       await oldDefaultWhatsapp.update({ isDefault: false });
     }
   }
 
-  const whatsapp = await ShowWhatsAppService(whatsappId, companyId);
+  const whatsapp = await ShowWhatsAppService(whatsappId);
 
   await whatsapp.update({
     name,
     status,
     session,
     greetingMessage,
-    complationMessage,
-    outOfHoursMessage,
-    ratingMessage,
-    isDefault,
-    companyId,
-    token,
-    //timeSendQueue,
-    //sendIdQueue,
-    transferQueueId,	
-	timeToTransfer,	
-    promptId,
-    maxUseBotQueues,
-    timeUseBotQueues,
-    expiresTicket,
-    expiresInactiveMessage
+    farewellMessage,
+    isDefault
   });
 
   await AssociateWhatsappQueue(whatsapp, queueIds);

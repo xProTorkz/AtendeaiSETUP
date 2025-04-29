@@ -1,9 +1,7 @@
 import React, { useState, useRef, useEffect, useContext } from "react";
-
 import { useHistory } from "react-router-dom";
 import { format } from "date-fns";
-import { socketConnection } from "../../services/socket";
-
+import openSocket from "../../services/socket-io";
 import useSound from "use-sound";
 
 import Popover from "@material-ui/core/Popover";
@@ -15,12 +13,11 @@ import { makeStyles } from "@material-ui/core/styles";
 import Badge from "@material-ui/core/Badge";
 import ChatIcon from "@material-ui/icons/Chat";
 
-import TicketListItem from "../TicketListItemCustom";
+import TicketListItem from "../TicketListItem";
+import { i18n } from "../../translate/i18n";
 import useTickets from "../../hooks/useTickets";
 import alertSound from "../../assets/sound.mp3";
 import { AuthContext } from "../../context/Auth/AuthContext";
-import { i18n } from "../../translate/i18n";
-import toastError from "../../errors/toastError";
 
 const useStyles = makeStyles(theme => ({
 	tabContainer: {
@@ -40,9 +37,12 @@ const useStyles = makeStyles(theme => ({
 	noShadow: {
 		boxShadow: "none !important",
 	},
+	iconButton: {
+		color: theme.palette.text.primary,
+	},
 }));
 
-const NotificationsPopOver = (volume) => {
+const NotificationsPopOver = () => {
 	const classes = useStyles();
 
 	const history = useHistory();
@@ -53,31 +53,13 @@ const NotificationsPopOver = (volume) => {
 	const [isOpen, setIsOpen] = useState(false);
 	const [notifications, setNotifications] = useState([]);
 
-	const [showPendingTickets, setShowPendingTickets] = useState(false);
-
 	const [, setDesktopNotifications] = useState([]);
 
 	const { tickets } = useTickets({ withUnreadMessages: "true" });
-
-	const [play] = useSound(alertSound, volume);
+	const [play] = useSound(alertSound);
 	const soundAlertRef = useRef();
 
 	const historyRef = useRef(history);
-
-	useEffect(() => {
-		const fetchSettings = async () => {
-			try {
-
-				if (user.allTicket === "enable") {
-					setShowPendingTickets(true);
-				}
-			} catch (err) {
-			  	toastError(err);
-			}
-		}
-	  
-		fetchSettings();
-	}, []);
 
 	useEffect(() => {
 		soundAlertRef.current = play;
@@ -90,17 +72,7 @@ const NotificationsPopOver = (volume) => {
 	}, [play]);
 
 	useEffect(() => {
-		const processNotifications = () => {
-			if (showPendingTickets) {
-				setNotifications(tickets);
-			} else {
-				const newNotifications = tickets.filter(ticket => ticket.status !== "pending");
-
-				setNotifications(newNotifications);
-			}
-		}
-
-		processNotifications();
+		setNotifications(tickets);
 	}, [tickets]);
 
 	useEffect(() => {
@@ -108,10 +80,11 @@ const NotificationsPopOver = (volume) => {
 	}, [ticketIdUrl]);
 
 	useEffect(() => {
-		const socket = socketConnection({companyId: user.companyId, userId: user.id});
+		const socket = openSocket();
+
 		socket.on("connect", () => socket.emit("joinNotification"));
 
-		socket.on(`company-${user.companyId}-ticket`, data => {
+		socket.on("ticket", data => {
 			if (data.action === "updateUnread" || data.action === "delete") {
 				setNotifications(prevState => {
 					const ticketIndex = prevState.findIndex(t => t.id === data.ticketId);
@@ -136,13 +109,11 @@ const NotificationsPopOver = (volume) => {
 			}
 		});
 
-		socket.on(`company-${user.companyId}-appMessage`, data => {
+		socket.on("appMessage", data => {
 			if (
-				data.action === "create" && !data.message.fromMe && 
-				(data.ticket.status !== "pending" ) &&
-				(!data.message.read || data.ticket.status === "pending") &&
-				(data.ticket.userId === user?.id || !data.ticket.userId) &&
-				(user?.queues?.some(queue => (queue.id === data.ticket.queueId)) || !data.ticket.queueId)
+				data.action === "create" &&
+				!data.message.read &&
+				(data.ticket.userId === user?.id || !data.ticket.userId)
 			) {
 				setNotifications(prevState => {
 					const ticketIndex = prevState.findIndex(t => t.id === data.ticket.id);
@@ -168,14 +139,14 @@ const NotificationsPopOver = (volume) => {
 		return () => {
 			socket.disconnect();
 		};
-	}, [user, showPendingTickets]);
+	}, [user]);
 
 	const handleNotifications = data => {
 		const { message, contact, ticket } = data;
 
 		const options = {
 			body: `${message.body} - ${format(new Date(), "HH:mm")}`,
-			icon: contact.urlPicture,
+			icon: contact.profilePicUrl,
 			tag: ticket.id,
 			renotify: true,
 		};
@@ -188,8 +159,7 @@ const NotificationsPopOver = (volume) => {
 		notification.onclick = e => {
 			e.preventDefault();
 			window.focus();
-			historyRef.current.push(`/tickets/${ticket.uuid}`);
-			// handleChangeTab(null, ticket.isGroup? "group" : "open");
+			historyRef.current.push(`/tickets/${ticket.id}`);
 		};
 
 		setDesktopNotifications(prevState => {
@@ -224,10 +194,9 @@ const NotificationsPopOver = (volume) => {
 				onClick={handleClick}
 				ref={anchorEl}
 				aria-label="Open Notifications"
-				color="inherit"
-				style={{color:"white"}}
+				className={classes.iconButton}
 			>
-				<Badge overlap="rectangular" badgeContent={notifications.length} color="secondary">
+				<Badge badgeContent={notifications.length} color="secondary">
 					<ChatIcon />
 				</Badge>
 			</IconButton>

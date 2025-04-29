@@ -1,8 +1,9 @@
 import { Server as SocketIO } from "socket.io";
 import { Server } from "http";
+import { verify } from "jsonwebtoken";
 import AppError from "../errors/AppError";
 import { logger } from "../utils/logger";
-import User from "../models/User";
+import authConfig from "../config/auth";
 
 let io: SocketIO;
 
@@ -13,18 +14,19 @@ export const initIO = (httpServer: Server): SocketIO => {
     }
   });
 
-  io.on("connection", async socket => {
-    logger.info("Client Connected");
-    const { userId } = socket.handshake.query;
-
-    if (userId && userId !== "undefined" && userId !== "null") {
-      const user = await User.findByPk(userId);
-      if (user) {
-        user.online = true;
-        await user.save();
-      }
+  io.on("connection", socket => {
+    const { token } = socket.handshake.query;
+    let tokenData = null;
+    try {
+      tokenData = verify(token, authConfig.secret);
+      logger.debug(JSON.stringify(tokenData), "io-onConnection: tokenData");
+    } catch (error) {
+      logger.error(JSON.stringify(error), "Error decoding token");
+      socket.disconnect();
+      return io;
     }
 
+    logger.info("Client Connected");
     socket.on("joinChatBox", (ticketId: string) => {
       logger.info("A client joined a ticket channel");
       socket.join(ticketId);
@@ -39,6 +41,12 @@ export const initIO = (httpServer: Server): SocketIO => {
       logger.info(`A client joined to ${status} tickets channel.`);
       socket.join(status);
     });
+
+    socket.on("disconnect", () => {
+      logger.info("Client disconnected");
+    });
+
+    return socket;
   });
   return io;
 };

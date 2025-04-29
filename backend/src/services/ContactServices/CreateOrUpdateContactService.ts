@@ -1,8 +1,7 @@
 import { getIO } from "../../libs/socket";
 import Contact from "../../models/Contact";
-import ContactCustomField from "../../models/ContactCustomField";
-import { isNil } from "lodash";
-interface ExtraInfo extends ContactCustomField {
+
+interface ExtraInfo {
   name: string;
   value: string;
 }
@@ -13,9 +12,7 @@ interface Request {
   isGroup: boolean;
   email?: string;
   profilePicUrl?: string;
-  companyId: number;
   extraInfo?: ExtraInfo[];
-  whatsappId?: number;
 }
 
 const CreateOrUpdateContactService = async ({
@@ -24,31 +21,19 @@ const CreateOrUpdateContactService = async ({
   profilePicUrl,
   isGroup,
   email = "",
-  companyId,
-  extraInfo = [],
-  whatsappId
+  extraInfo = []
 }: Request): Promise<Contact> => {
   const number = isGroup ? rawNumber : rawNumber.replace(/[^0-9]/g, "");
 
   const io = getIO();
   let contact: Contact | null;
 
-  contact = await Contact.findOne({
-    where: {
-      number,
-      companyId
-    }
-  });
+  contact = await Contact.findOne({ where: { number } });
 
   if (contact) {
     contact.update({ profilePicUrl });
-    console.log(contact.whatsappId)
-    if (isNil(contact.whatsappId === null)) {
-      contact.update({
-        whatsappId
-      });
-    }
-    io.emit(`company-${companyId}-contact`, {
+
+    io.emit("contact", {
       action: "update",
       contact
     });
@@ -59,12 +44,10 @@ const CreateOrUpdateContactService = async ({
       profilePicUrl,
       email,
       isGroup,
-      extraInfo,
-      companyId,
-      whatsappId
+      extraInfo
     });
 
-    io.emit(`company-${companyId}-contact`, {
+    io.emit("contact", {
       action: "create",
       contact
     });

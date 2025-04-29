@@ -3,47 +3,32 @@ import { Op } from "sequelize";
 import Contact from "../../models/Contact";
 import Ticket from "../../models/Ticket";
 import ShowTicketService from "./ShowTicketService";
-import FindOrCreateATicketTrakingService from "./FindOrCreateATicketTrakingService";
-import Setting from "../../models/Setting";
-import Whatsapp from "../../models/Whatsapp";
-
-interface TicketData {
-  status?: string;
-  companyId?: number;
-  unreadMessages?: number;
-}
 
 const FindOrCreateTicketService = async (
   contact: Contact,
   whatsappId: number,
   unreadMessages: number,
-  companyId: number,
   groupContact?: Contact
 ): Promise<Ticket> => {
   let ticket = await Ticket.findOne({
     where: {
       status: {
-        [Op.or]: ["open", "pending", "closed"]
+        [Op.or]: ["open", "pending"]
       },
       contactId: groupContact ? groupContact.id : contact.id,
-      companyId,
-      whatsappId
-    },
-    order: [["id", "DESC"]]
+      whatsappId: whatsappId
+    }
   });
 
   if (ticket) {
-    await ticket.update({ unreadMessages, whatsappId });
-  }
-  
-  if (ticket?.status === "closed") {
-    await ticket.update({ queueId: null, userId: null });
+    await ticket.update({ unreadMessages });
   }
 
   if (!ticket && groupContact) {
     ticket = await Ticket.findOne({
       where: {
-        contactId: groupContact.id
+        contactId: groupContact.id,
+        whatsappId: whatsappId
       },
       order: [["updatedAt", "DESC"]]
     });
@@ -52,22 +37,9 @@ const FindOrCreateTicketService = async (
       await ticket.update({
         status: "pending",
         userId: null,
-        unreadMessages,
-        queueId: null,
-        companyId
-      });
-      await FindOrCreateATicketTrakingService({
-        ticketId: ticket.id,
-        companyId,
-        whatsappId: ticket.whatsappId,
-        userId: ticket.userId
+        unreadMessages
       });
     }
-    const msgIsGroupBlock = await Setting.findOne({
-      where: { key: "timeCreateNewTicket" }
-    });
-  
-    const value = msgIsGroupBlock ? parseInt(msgIsGroupBlock.value, 10) : 7200;
   }
 
   if (!ticket && !groupContact) {
@@ -76,7 +48,8 @@ const FindOrCreateTicketService = async (
         updatedAt: {
           [Op.between]: [+subHours(new Date(), 2), +new Date()]
         },
-        contactId: contact.id
+        contactId: contact.id,
+        whatsappId: whatsappId
       },
       order: [["updatedAt", "DESC"]]
     });
@@ -85,22 +58,10 @@ const FindOrCreateTicketService = async (
       await ticket.update({
         status: "pending",
         userId: null,
-        unreadMessages,
-        queueId: null,
-        companyId
-      });
-      await FindOrCreateATicketTrakingService({
-        ticketId: ticket.id,
-        companyId,
-        whatsappId: ticket.whatsappId,
-        userId: ticket.userId
+        unreadMessages
       });
     }
   }
-  
-    const whatsapp = await Whatsapp.findOne({
-    where: { id: whatsappId }
-  });
 
   if (!ticket) {
     ticket = await Ticket.create({
@@ -108,19 +69,11 @@ const FindOrCreateTicketService = async (
       status: "pending",
       isGroup: !!groupContact,
       unreadMessages,
-      whatsappId,
-      whatsapp,
-      companyId
-    });
-    await FindOrCreateATicketTrakingService({
-      ticketId: ticket.id,
-      companyId,
-      whatsappId,
-      userId: ticket.userId
+      whatsappId
     });
   }
 
-  ticket = await ShowTicketService(ticket.id, companyId);
+  ticket = await ShowTicketService(ticket.id);
 
   return ticket;
 };

@@ -1,19 +1,25 @@
-# Etapa de build
-FROM node:20-alpine AS build-deps
+FROM node:14-alpine as build-deps
 WORKDIR /usr/src/app
-COPY package*.json package-lock.json ./
+COPY package*.json ./
 RUN npm install
-COPY . .
+COPY .env* ./
+COPY src/ ./src/
+COPY public/ ./public/
 RUN npm run build
 
-# Etapa final
-FROM node:20-alpine
-WORKDIR /usr/src/app
-RUN apk add --no-cache jq
-COPY --from=build-deps /usr/src/app/build ./build
-COPY server.js ./
-COPY add-env-vars.sh ./
-RUN chmod +x add-env-vars.sh
-RUN npm install express
-EXPOSE 3250
-CMD ["sh", "-c", "sh ./add-env-vars.sh && node server.js"]
+FROM nginx:alpine
+RUN apk add --no-cache jq openssl
+
+ENV DOCKERIZE_VERSION v0.6.1
+RUN wget https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-alpine-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
+    && tar -C /usr/local/bin -xzvf dockerize-alpine-linux-amd64-$DOCKERIZE_VERSION.tar.gz \
+    && rm dockerize-alpine-linux-amd64-$DOCKERIZE_VERSION.tar.gz
+
+ENV PUBLIC_HTML=/var/www/public/
+
+COPY .docker/nginx /etc/nginx/
+COPY --from=build-deps /usr/src/app/build ${PUBLIC_HTML}
+EXPOSE 80
+
+COPY .docker/add-env-vars.sh /docker-entrypoint.d/01-add-env-vars.sh
+RUN chmod +x /docker-entrypoint.d/01-add-env-vars.sh
